@@ -1,0 +1,82 @@
+{
+    "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-10-13T00:00:00+00:00",
+    "name": "Leaf",
+    "author": "parker@pterodactyl.io",
+    "description": "High-performance Paper fork with drastically reduced memory usage. Runs the full Paper and Purpur API, so every Bukkit, Spigot and Paper plugin works unchanged.",
+    "features": [
+        "eula",
+        "java_version",
+        "pid_limit"
+    ],
+    "docker_images": {
+        "Java 25": "ghcr.io/ptero-eggs/yolks:java_25",
+        "Java 22": "ghcr.io/ptero-eggs/yolks:java_22",
+        "Java 21": "ghcr.io/ptero-eggs/yolks:java_21",
+        "Java 17": "ghcr.io/ptero-eggs/yolks:java_17",
+        "Java 16": "ghcr.io/ptero-eggs/yolks:java_16",
+        "Java 11": "ghcr.io/ptero-eggs/yolks:java_11",
+        "Java 8": "ghcr.io/ptero-eggs/yolks:java_8"
+    },
+    "file_denylist": [],
+    "startup": "java -Xms128M -XX:MaxRAMPercentage=95.0 -Dterminal.jline=false -Dterminal.ansi=true -jar {{SERVER_JARFILE}}",
+    "config": {
+        "files": "{\r\n    \"server.properties\": {\r\n        \"parser\": \"properties\",\r\n        \"find\": {\r\n            \"server-ip\": \"0.0.0.0\",\r\n            \"server-port\": \"{{server.build.default.port}}\",\r\n            \"query.port\": \"{{server.build.default.port}}\"\r\n        }\r\n    }\r\n}",
+        "startup": "{\r\n    \"done\": \")! For help, type \"\r\n}",
+        "logs": "{}",
+        "stop": "stop"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/ash\r\n# Leaf Installation Script\r\n# Leaf is a Paper fork; the jar is resolved from Leaf's v2 build API.\r\n#\r\n# Project:   https://www.leafmc.one\r\n# API:       https://api.leafmc.one/v2\r\n\r\nPROJECT=leaf\r\nAPI=https://api.leafmc.one/v2/projects/leaf\r\nUSER_AGENT=\"Pterodactyl (https://pterodactyl.io)\"\r\n\r\ncd /mnt/server\r\n\r\n# A supplied download URL wins, exactly as it does on the Paper egg.\r\nif [ -n \"${DL_PATH}\" ]; then\r\n    echo \"Using supplied download url: ${DL_PATH}\"\r\n    DOWNLOAD_URL=`eval echo $(echo ${DL_PATH} | sed -e 's/{{/${/g' -e 's/}}/}/g')`\r\n    curl --fail --user-agent \"${USER_AGENT}\" -o ${SERVER_JARFILE} ${DOWNLOAD_URL} || {\r\n        echo \"Failed to download from the supplied URL.\"\r\n        exit 1\r\n    }\r\n    exit 0\r\nfi\r\n\r\n# The payload is piped with printf, never echo: dash's echo interprets\r\n# backslash escapes, which rewrites the escaped quotes inside the JSON and\r\n# corrupts it into something jq cannot parse.\r\n#\r\n# Leaf's build list contains raw control characters inside commit messages --\r\n# newlines and tabs appear literally inside JSON strings, which is invalid JSON\r\n# and makes jq reject the entire document. Stripping every control character\r\n# (including tab/newline/carriage return) is safe here: those three are only\r\n# ever JSON whitespace *between* tokens, and removing them cannot join two\r\n# tokens together in this payload.\r\n#\r\n# The `tr` is written out inline at every use rather than held in a variable: a\r\n# variable would need the octal escapes in single quotes, and ${VAR} expansion\r\n# does not re-parse them, so tr would receive literal backslashes and silently\r\n# strip nothing.\r\n\r\nif [ -z \"${LEAF_VERSION}\" ] || [ \"${LEAF_VERSION}\" = \"latest\" ]; then\r\n    LEAF_VERSION=$(curl -sSL ${API} | tr -d '\\000-\\037' | jq -r '.versions[0]')\r\nfi\r\n\r\n# Leaf does not publish every version; fall back rather than fail the install.\r\nVER_EXISTS=$(curl -sSL ${API} | tr -d '\\000-\\037' | jq -r --arg V \"${LEAF_VERSION}\" '.versions | index($V) != null')\r\nif [ \"${VER_EXISTS}\" != \"true\" ]; then\r\n    LEAF_VERSION=$(curl -sSL ${API} | tr -d '\\000-\\037' | jq -r '.versions[0]')\r\n    echo \"Minecraft version not offered by Leaf; using ${LEAF_VERSION}\"\r\nfi\r\n\r\n# Resolve the build. Newest stable (\"default\") is preferred; some versions only\r\n# ever publish experimental builds, so fall back to the newest of any channel\r\n# rather than leaving the install with nothing to download.\r\nif [ -z \"${LEAF_BUILD}\" ] || [ \"${LEAF_BUILD}\" = \"latest\" ]; then\r\n    BUILDS=$(curl -sSL \"${API}/versions/${LEAF_VERSION}/builds\" | tr -d '\\000-\\037')\r\n    LEAF_BUILD=$(printf '%s' \"${BUILDS}\" | jq -r '[.builds[] | select(.channel==\"default\")] | if length > 0 then max_by(.build).build else empty end')\r\n    if [ -z \"${LEAF_BUILD}\" ] || [ \"${LEAF_BUILD}\" = \"null\" ]; then\r\n        echo \"No stable Leaf build for ${LEAF_VERSION}; using the newest available.\"\r\n        LEAF_BUILD=$(printf '%s' \"${BUILDS}\" | jq -r '[.builds[].build] | max')\r\n    fi\r\nelse\r\n    BUILDS=$(curl -sSL \"${API}/versions/${LEAF_VERSION}/builds\" | tr -d '\\000-\\037')\r\n    BUILD_EXISTS=$(printf '%s' \"${BUILDS}\" | jq -r --arg B \"${LEAF_BUILD}\" '[.builds[] | select((.build|tostring) == $B)] | length > 0')\r\n    if [ \"${BUILD_EXISTS}\" != \"true\" ]; then\r\n        echo \"Leaf build ${LEAF_BUILD} does not exist for ${LEAF_VERSION}; using the newest stable.\"\r\n        LEAF_BUILD=$(printf '%s' \"${BUILDS}\" | jq -r '[.builds[] | select(.channel==\"default\")] | if length > 0 then max_by(.build).build else ([.builds[].build] | max) end')\r\n    fi\r\nfi\r\n\r\nif [ -z \"${LEAF_BUILD}\" ] || [ \"${LEAF_BUILD}\" = \"null\" ]; then\r\n    echo \"Could not resolve a Leaf build for ${LEAF_VERSION}.\"\r\n    exit 1\r\nfi\r\n\r\necho \"Version being downloaded\"\r\necho \"MC Version: ${LEAF_VERSION}\"\r\necho \"Leaf build: ${LEAF_BUILD}\"\r\n\r\nDOWNLOAD_URL=\"${API}/versions/${LEAF_VERSION}/builds/${LEAF_BUILD}/downloads/leaf-${LEAF_VERSION}-${LEAF_BUILD}.jar\"\r\necho \"Downloading: ${DOWNLOAD_URL}\"\r\n\r\n# --fail turns an HTTP error into a non-zero exit instead of writing the error\r\n# page to disk as if it were the jar.\r\ncurl --fail --user-agent \"${USER_AGENT}\" -o ${SERVER_JARFILE} ${DOWNLOAD_URL} || {\r\n    echo \"Failed to download ${DOWNLOAD_URL}\"\r\n    exit 1\r\n}\r\n\r\n# A jar is a zip archive, so it must start with \"PK\". Without this check a\r\n# truncated or error response would be installed and only fail much later, at\r\n# server start, with a far less obvious message.\r\nif [ ! -s \"${SERVER_JARFILE}\" ] || [ \"$(head -c 2 ${SERVER_JARFILE})\" != \"PK\" ]; then\r\n    echo \"Downloaded file is not a valid jar; aborting.\"\r\n    rm -f ${SERVER_JARFILE}\r\n    exit 1\r\nfi\r\n\r\n# Paper forks refuse to start without these; the vanilla file is only fetched\r\n# when missing so a reinstall keeps a customised copy.\r\nif [ ! -f server.properties ]; then\r\n    echo \"Downloading MC server.properties\"\r\n    curl -sSL -o server.properties https://raw.githubusercontent.com/pterodactyl/game-eggs/main/minecraft/java/server.properties\r\nfi\r\n\r\necho \"done\"",
+            "container": "ghcr.io/ptero-eggs/installers:alpine",
+            "entrypoint": "ash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Leaf Minecraft Version",
+            "description": "The Minecraft version of Leaf to download.\r\n\r\nLeave at latest to always get the newest version Leaf offers. Versions Leaf does not publish fall back to the newest one.",
+            "env_variable": "LEAF_VERSION",
+            "default_value": "latest",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:20",
+            "field_type": "text"
+        },
+        {
+            "name": "Server Jar File",
+            "description": "The name of the server jarfile to run the server with.",
+            "env_variable": "SERVER_JARFILE",
+            "default_value": "leaf.jar",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|regex:/^([\\w\\d._-]+)(\\.jar)$/",
+            "field_type": "text"
+        },
+        {
+            "name": "Leaf Build Number",
+            "description": "The Leaf build number to download.\r\n\r\nLeave at latest to get the newest stable build. Builds that do not exist fall back to the newest stable one.",
+            "env_variable": "LEAF_BUILD",
+            "default_value": "latest",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:20",
+            "field_type": "text"
+        },
+        {
+            "name": "Download Path",
+            "description": "A URL to use to download the jar rather than the ones in the install script. Not user viewable.",
+            "env_variable": "DL_PATH",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": false,
+            "rules": "nullable|string",
+            "field_type": "text"
+        }
+    ]
+}
