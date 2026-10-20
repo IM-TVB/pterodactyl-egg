@@ -1,0 +1,71 @@
+{
+  "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2026-10-20T06:52:09+00:00",
+  "name": "BungeeCord",
+  "author": "kpeclub@example.com",
+  "description": "BungeeCord is a proxy that lets players connect multiple Minecraft servers together behind one address. It is ideal for building a network of game modes.",
+  "features": [
+    "eula",
+    "java_version",
+    "pid_limit"
+  ],
+  "docker_images": {
+    "Java 21": "ghcr.io/pterodactyl/yolks:java_21",
+    "Java 25": "ghcr.io/pterodactyl/yolks:java_25",
+    "Java 17": "ghcr.io/pterodactyl/yolks:java_17",
+    "Java 16": "ghcr.io/pterodactyl/yolks:java_16",
+    "Java 11": "ghcr.io/pterodactyl/yolks:java_11",
+    "Java 8": "ghcr.io/pterodactyl/yolks:java_8"
+  },
+  "file_denylist": [],
+  "startup": "java -Xms128M -XX:MaxRAMPercentage=95.0 -Dterminal.jline=false -Dterminal.ansi=true -jar {{SERVER_JARFILE}}",
+  "config": {
+    "files": "{\n    \"config.yml\": {\n        \"parser\": \"yaml\",\n        \"find\": {\n            \"listeners[0].query_port\": \"{{server.build.default.port}}\",\n            \"listeners[0].host\": \"0.0.0.0:{{server.build.default.port}}\",\n            \"servers.*.address\": {\n                \"regex:^(127\\\\.0\\\\.0\\\\.1|localhost)(:\\\\d{1,5})?$\": \"{{config.docker.interface}}$2\"\n            }\n        }\n    }\n}",
+    "startup": "{\n    \"done\": \"Listening on \"\n}",
+    "logs": "{}",
+    "stop": "end"
+  },
+  "scripts": {
+    "installation": {
+      "script": "#!/bin/ash\n# BungeeCord installation script for Pterodactyl\n# Server files: /mnt/server\n\nset -eu\n\ncd /mnt/server\n\nJENKINS_URL=\"https://hub.spigotmc.org/jenkins/job/BungeeCord\"\n\nif [ -n \"${DL_PATH:-}\" ]; then\n    echo \"Using supplied download URL: ${DL_PATH}\"\n    DOWNLOAD_URL=\"${DL_PATH}\"\nelse\n    BUNGEE_VERSION=\"${BUNGEE_VERSION:-latest}\"\n\n    case \"${BUNGEE_VERSION}\" in\n        latest)\n            BUNGEE_VERSION=\"lastSuccessfulBuild\"\n            ;;\n        lastSuccessfulBuild|lastStableBuild)\n            ;;\n        *[!0-9]*)\n            echo \"ERROR: Invalid BungeeCord build '${BUNGEE_VERSION}'.\" >&2\n            echo \"Use latest, lastSuccessfulBuild, lastStableBuild, or a numeric build number.\" >&2\n            exit 1\n            ;;\n    esac\n\n    if printf '%s' \"${BUNGEE_VERSION}\" | grep -Eq '^[0-9]+$'; then\n        if ! curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 \\\n            \"${JENKINS_URL}/${BUNGEE_VERSION}/api/json\" >/dev/null; then\n            echo \"ERROR: BungeeCord build ${BUNGEE_VERSION} does not exist.\" >&2\n            exit 1\n        fi\n    fi\n\n    DOWNLOAD_URL=\"${JENKINS_URL}/${BUNGEE_VERSION}/artifact/bootstrap/target/BungeeCord.jar\"\n\n    echo \"BungeeCord build: ${BUNGEE_VERSION}\"\n    echo \"Download URL: ${DOWNLOAD_URL}\"\nfi\n\necho \"Downloading BungeeCord to ${SERVER_JARFILE}...\"\n\nTMP_JAR=\"${SERVER_JARFILE}.tmp\"\nrm -f \"${TMP_JAR}\"\n\nif ! curl -fSL --retry 3 --retry-delay 2 --connect-timeout 15 -o \"${TMP_JAR}\" \"${DOWNLOAD_URL}\"; then\n    echo \"ERROR: Failed to download the BungeeCord jar.\" >&2\n    rm -f \"${TMP_JAR}\"\n    exit 1\nfi\n\nif [ ! -s \"${TMP_JAR}\" ]; then\n    echo \"ERROR: The downloaded jar is empty.\" >&2\n    rm -f \"${TMP_JAR}\"\n    exit 1\nfi\n\nif [ -f \"${SERVER_JARFILE}\" ]; then\n    mv -f \"${SERVER_JARFILE}\" \"${SERVER_JARFILE}.old\"\nfi\n\nmv -f \"${TMP_JAR}\" \"${SERVER_JARFILE}\"\necho \"BungeeCord installed successfully.\"\n\n# Create a starter config so Pterodactyl can set the listener and backend\n# addresses before BungeeCord boots. Never overwrite an existing config.\nif [ ! -f config.yml ]; then\n    echo \"Creating a default config.yml...\"\n    cat > config.yml <<'YAML'\nservers:\n  lobby:\n    motd: '&1Another BungeeCord server'\n    address: localhost:25565\n    restricted: false\nlisteners:\n- query_port: 25577\n  motd: '&1Another BungeeCord server'\n  tab_list: GLOBAL_PING\n  query_enabled: false\n  proxy_protocol: false\n  forced_hosts:\n    pvp.md-5.net: pvp\n  ping_passthrough: false\n  priorities:\n  - lobby\n  bind_local_address: true\n  host: 0.0.0.0:25577\n  max_players: 1\n  tab_size: 60\n  force_default_server: false\nonline_mode: true\nip_forward: false\nYAML\nfi\n",
+      "container": "ghcr.io/pterodactyl/installers:alpine",
+      "entrypoint": "ash"
+    }
+  },
+  "variables": [
+    {
+      "name": "BungeeCord Build",
+      "description": "The BungeeCord build to install.\n\nUse latest, lastSuccessfulBuild, lastStableBuild, or a numeric build number (for example 2104).",
+      "env_variable": "BUNGEE_VERSION",
+      "default_value": "latest",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|alpha_num|max:30",
+      "field_type": "text"
+    },
+    {
+      "name": "Server Jar File",
+      "description": "The name of the jar file used to run BungeeCord.",
+      "env_variable": "SERVER_JARFILE",
+      "default_value": "bungeecord.jar",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|regex:/^([\\w\\d._-]+)(\\.jar)$/|max:80",
+      "field_type": "text"
+    },
+    {
+      "name": "Download Path",
+      "description": "Optional direct URL to a BungeeCord jar. When set, it overrides the build option above. This is intended for administrators.",
+      "env_variable": "DL_PATH",
+      "default_value": "",
+      "user_viewable": false,
+      "user_editable": false,
+      "rules": "nullable|string|max:1000",
+      "field_type": "text"
+    }
+  ]
+}

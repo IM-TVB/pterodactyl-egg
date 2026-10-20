@@ -1,0 +1,81 @@
+{
+  "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2026-10-20T06:52:09+00:00",
+  "name": "Purpur",
+  "author": "kpeclub@example.com",
+  "description": "Purpur is a drop-in replacement for Paper servers designed for configurability, performance, and new fun and exciting gameplay features.",
+  "features": [
+    "eula",
+    "java_version",
+    "pid_limit"
+  ],
+  "docker_images": {
+    "Java 25": "ghcr.io/pterodactyl/yolks:java_25",
+    "Java 21": "ghcr.io/pterodactyl/yolks:java_21",
+    "Java 17": "ghcr.io/pterodactyl/yolks:java_17",
+    "Java 16": "ghcr.io/pterodactyl/yolks:java_16",
+    "Java 11": "ghcr.io/pterodactyl/yolks:java_11",
+    "Java 8": "ghcr.io/pterodactyl/yolks:java_8"
+  },
+  "file_denylist": [],
+  "startup": "java -Xms128M -XX:MaxRAMPercentage=95.0 -Dterminal.jline=false -Dterminal.ansi=true -jar {{SERVER_JARFILE}}",
+  "config": {
+    "files": "{\n    \"server.properties\": {\n        \"parser\": \"properties\",\n        \"find\": {\n            \"server-ip\": \"0.0.0.0\",\n            \"server-port\": \"{{server.build.default.port}}\",\n            \"query.port\": \"{{server.build.default.port}}\"\n        }\n    }\n}",
+    "startup": "{\n    \"done\": \")! For help, type \"\n}",
+    "logs": "{}",
+    "stop": "stop"
+  },
+  "scripts": {
+    "installation": {
+      "script": "#!/bin/ash\n# Purpur installation script for Pterodactyl\n# Server files: /mnt/server\n\nset -eu\n\nPROJECT=\"purpur\"\nAPI=\"https://api.purpurmc.org/v2/${PROJECT}\"\n\ncd /mnt/server\n\nif [ -n \"${DL_PATH:-}\" ]; then\n    echo \"Using supplied download URL: ${DL_PATH}\"\n    DOWNLOAD_URL=\"${DL_PATH}\"\nelse\n    echo \"Fetching ${PROJECT} version information...\"\n\n    if ! PROJECT_JSON=\"$(curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 \"${API}\")\"; then\n        echo \"ERROR: Unable to reach the Purpur API.\" >&2\n        exit 1\n    fi\n\n    MINECRAFT_VERSION=\"${MINECRAFT_VERSION:-latest}\"\n    BUILD_NUMBER=\"${BUILD_NUMBER:-latest}\"\n\n    if [ \"${MINECRAFT_VERSION}\" = \"latest\" ]; then\n        MINECRAFT_VERSION=\"$(printf '%s' \"${PROJECT_JSON}\" | jq -r '.versions[-1]')\"\n        echo \"Using the latest Minecraft version: ${MINECRAFT_VERSION}\"\n    elif printf '%s' \"${PROJECT_JSON}\" | jq -e --arg version \"${MINECRAFT_VERSION}\" '.versions | index($version) != null' >/dev/null; then\n        echo \"Using Minecraft version: ${MINECRAFT_VERSION}\"\n    else\n        MINECRAFT_VERSION=\"$(printf '%s' \"${PROJECT_JSON}\" | jq -r '.versions[-1]')\"\n        echo \"Requested version was not found. Using the latest version: ${MINECRAFT_VERSION}\"\n    fi\n\n    if ! VERSION_JSON=\"$(curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 \"${API}/${MINECRAFT_VERSION}\")\"; then\n        echo \"ERROR: Unable to fetch builds for Minecraft ${MINECRAFT_VERSION}.\" >&2\n        exit 1\n    fi\n\n    if [ \"${BUILD_NUMBER}\" = \"latest\" ]; then\n        BUILD_NUMBER=\"$(printf '%s' \"${VERSION_JSON}\" | jq -r '.builds.latest')\"\n        echo \"Using the latest build: ${BUILD_NUMBER}\"\n    elif printf '%s' \"${VERSION_JSON}\" | jq -e --arg build \"${BUILD_NUMBER}\" '.builds.all | index($build) != null' >/dev/null; then\n        echo \"Using build: ${BUILD_NUMBER}\"\n    else\n        BUILD_NUMBER=\"$(printf '%s' \"${VERSION_JSON}\" | jq -r '.builds.latest')\"\n        echo \"Requested build was not found. Using the latest build: ${BUILD_NUMBER}\"\n    fi\n\n    DOWNLOAD_URL=\"${API}/${MINECRAFT_VERSION}/${BUILD_NUMBER}/download\"\n\n    echo \"Minecraft version: ${MINECRAFT_VERSION}\"\n    echo \"Build: ${BUILD_NUMBER}\"\n    echo \"Download URL: ${DOWNLOAD_URL}\"\nfi\n\necho \"Downloading Purpur to ${SERVER_JARFILE}...\"\n\nTMP_JAR=\"${SERVER_JARFILE}.tmp\"\nrm -f \"${TMP_JAR}\"\n\nif ! curl -fSL --retry 3 --retry-delay 2 --connect-timeout 15 -o \"${TMP_JAR}\" \"${DOWNLOAD_URL}\"; then\n    echo \"ERROR: Failed to download the Purpur jar.\" >&2\n    rm -f \"${TMP_JAR}\"\n    exit 1\nfi\n\nif [ ! -s \"${TMP_JAR}\" ]; then\n    echo \"ERROR: The downloaded jar is empty.\" >&2\n    rm -f \"${TMP_JAR}\"\n    exit 1\nfi\n\nif [ -f \"${SERVER_JARFILE}\" ]; then\n    mv -f \"${SERVER_JARFILE}\" \"${SERVER_JARFILE}.old\"\nfi\n\nmv -f \"${TMP_JAR}\" \"${SERVER_JARFILE}\"\necho \"Purpur installed successfully.\"\n\nif [ ! -f server.properties ]; then\n    echo \"Downloading the default server.properties...\"\n    if ! curl -fsSL --retry 3 --retry-delay 2 -o server.properties \\\n        https://raw.githubusercontent.com/pterodactyl/game-eggs/main/minecraft/java/server.properties; then\n        echo \"WARNING: Could not download server.properties. Purpur will create it on first start.\"\n        rm -f server.properties\n    fi\nfi\n",
+      "container": "ghcr.io/pterodactyl/installers:alpine",
+      "entrypoint": "ash"
+    }
+  },
+  "variables": [
+    {
+      "name": "Minecraft Version",
+      "description": "The Minecraft version to install.\n\nUse latest to always install the newest version. An unknown version falls back to the latest available version.",
+      "env_variable": "MINECRAFT_VERSION",
+      "default_value": "latest",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:20",
+      "field_type": "text"
+    },
+    {
+      "name": "Server Jar File",
+      "description": "The name of the jar file used to run the server.",
+      "env_variable": "SERVER_JARFILE",
+      "default_value": "server.jar",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|regex:/^([\\w\\d._-]+)(\\.jar)$/|max:80",
+      "field_type": "text"
+    },
+    {
+      "name": "Build Number",
+      "description": "The Purpur build number to install.\n\nUse latest to always install the newest build. An unknown build falls back to the latest build.",
+      "env_variable": "BUILD_NUMBER",
+      "default_value": "latest",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:20",
+      "field_type": "text"
+    },
+    {
+      "name": "Download Path",
+      "description": "Optional direct URL to a Purpur jar. When set, it overrides the version and build options above. This is intended for administrators.",
+      "env_variable": "DL_PATH",
+      "default_value": "",
+      "user_viewable": false,
+      "user_editable": false,
+      "rules": "nullable|string|max:1000",
+      "field_type": "text"
+    }
+  ]
+}
